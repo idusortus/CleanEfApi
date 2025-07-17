@@ -27,7 +27,7 @@ builder.Services.AddDbContext<QuoteDbContext>(options =>
     {
         sqlOptions.EnableRetryOnFailure(
             maxRetryCount: 5,
-            maxRetryDelay: TimeSpan.FromSeconds(5),
+            maxRetryDelay: TimeSpan.FromSeconds(30),
             errorNumbersToAdd: null); 
     }));
 // Enable automatic validation during model binding
@@ -41,7 +41,7 @@ var app = builder.Build();
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
-    app.UseDeveloperExceptionPage();
+    // app.UseDeveloperExceptionPage();
     app.MapOpenApi();
     app.MapScalarApiReference(options =>
     {
@@ -54,29 +54,11 @@ if (app.Environment.IsDevelopment())
 else
 {
     app.UseMiddleware<ExceptionHandlingMiddleware>();
-    // app.UseExceptionHandler("/error");
     app.UseHsts();
 }
 
 app.UseHttpsRedirection();
 app.UseAuthorization();
 app.MapControllers();
-
-// Add an endpoint for the ExceptionHandler redirection
-app.Map("/error", (HttpContext context) =>
-{
-    var exceptionHandlerPathFeature = context.Features.Get<IExceptionHandlerPathFeature>();
-    if (exceptionHandlerPathFeature?.Error != null)
-    {
-        app.Logger.LogError(exceptionHandlerPathFeature.Error, "An unhandled exception occurred at {Path}", exceptionHandlerPathFeature.Path);
-    }
-    context.Response.StatusCode = StatusCodes.Status500InternalServerError;
-    context.Response.ContentType = "application/json";
-    return Results.Problem(
-        title: "An unexpected error occurred.",
-        statusCode: StatusCodes.Status500InternalServerError,
-        detail: "Please try again later. If the problem persists, contact support."
-    );
-});
 
 app.Run();
