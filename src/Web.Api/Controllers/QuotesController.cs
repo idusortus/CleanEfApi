@@ -1,29 +1,63 @@
 using CleanEfApi.Application.DTOs;
+using CleanEfApi.Application.Responses;
 using CleanEfApi.Domain.Entities;
 using CleanEfApi.Infrastructure.Database;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace CleanEfApi.Web.Api.Controllers;
 
 [ApiController]
 [Route("/api/quotes")]
-public class QuotesController(QuoteDbContext _context) : ControllerBase
+public class QuotesController(
+    QuoteDbContext _context,
+    ILogger<QuotesController> _logger)
+    : ControllerBase
 {
-    [HttpGet("{id:int}")]
-    public async Task<ActionResult<QuoteResponse>> GetQuote(int id)
+    [HttpGet("{id}")]
+    [ProducesResponseType(StatusCodes.Status200OK, Type = typeof(ApiResponse<QuoteResponse>))] 
+    [ProducesResponseType(StatusCodes.Status400BadRequest, Type = typeof(ApiResponse))]
+    [ProducesResponseType(StatusCodes.Status404NotFound, Type = typeof(ApiResponse))] 
+    public async Task<ActionResult<ApiResponse<QuoteResponse>>> GetQuote(int id)
     {
-        var quote = await _context.Quotes.FindAsync(id);
-        if (quote == null) return NotFound();
-        var qr = new QuoteResponse
+        // 1. Explicit Input Validation for Path Parameters (not handled by ValidationActionFilter)
+        if (id <= 0)
         {
+            _logger.LogWarning("GetQuote: Invalid quote ID received: {QuoteId}", id);
+            // Return 400 Bad Request with a structured error response
+            return BadRequest(ApiResponse.Error("Quote ID must be a positive integer.",
+                new List<ApiError> { new ApiError { Field = "id", Message = "ID must be greater than 0.", Code = "INVALID_ID_FORMAT" } }));
+        }
+
+        _logger.LogInformation("GetQuote: Attempting to retrieve quote with ID: {QuoteId}", id);
+
+        // No try-catch here; letting the global ExceptionHandlingMiddleware catch unhandled exceptions (e.g., DB connection issues).
+        var quote = await _context.Quotes
+                                  .AsNoTracking() // Optimize for read-only query
+                                  .FirstOrDefaultAsync(q => q.QuoteId == id); // Using QuoteId property
+
+        // 3. Resource Not Found Handling
+        if (quote == null)
+        {
+            _logger.LogInformation("GetQuote: Quote with ID: {QuoteId} not found.", id);
+            // Return 404 Not Found with a structured error response
+            return NotFound(ApiResponse.Error($"Quote with ID '{id}' not found.",
+                new List<ApiError> { new ApiError { Code = "QUOTE_NOT_FOUND", Message = $"Quote with ID '{id}' does not exist." } }));
+        }
+
+        // 4. DTO Projection for the Response Payload
+        var quoteResponse = new QuoteResponse
+        {
+            QuoteId = quote.QuoteId, 
             Author = quote.Author,
             Content = quote.Content,
             Category = quote.Category,
             Likes = quote.Likes
         };
 
-        return Ok(qr);
+        _logger.LogInformation("GetQuote: Successfully retrieved quote with ID: {QuoteId}", id);
+        return Ok(ApiResponse.Ok(quoteResponse, "Quote retrieved successfully."));
     }
 
     [HttpPost()]

@@ -6,23 +6,36 @@ using FluentValidation;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.EntityFrameworkCore;
 using Scalar.AspNetCore;
+using CleanEfApi.Web.Api.Filters;
+using CleanEfApi.Web.Api.Middleware;
 
 var builder = WebApplication.CreateBuilder(args);
 // Add services to the container. 
-builder.Services.AddControllers();
+builder.Services.AddControllers(options =>
+{
+    options.Filters.Add<ValidationActionFilter>();
+})
+.ConfigureApiBehaviorOptions(options =>
+    options.SuppressModelStateInvalidFilter=true);
+
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
 // Infrastructure
 builder.Services.AddDbContext<QuoteDbContext>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("localdb")));
+    options.UseSqlServer(builder.Configuration.GetConnectionString("localdb"),
+    sqlServerOptionsAction: sqlOptions =>
+    {
+        sqlOptions.EnableRetryOnFailure(
+            maxRetryCount: 5,
+            maxRetryDelay: TimeSpan.FromSeconds(5),
+            errorNumbersToAdd: null); 
+    }));
 // Enable automatic validation during model binding
 builder.Services.AddFluentValidationAutoValidation();
 // //fluent validation (single, scoped)
 // builder.Services.AddScoped<IValidator<QuoteCreateRequest>, QuoteCreateRequestValidator>();
 // fluent validation (global)
 builder.Services.AddValidatorsFromAssemblyContaining<QuoteCreateRequestValidator>();
-
-
 
 var app = builder.Build();
 // Configure the HTTP request pipeline.
@@ -40,7 +53,8 @@ if (app.Environment.IsDevelopment())
 }
 else
 {
-    app.UseExceptionHandler("/error");
+    app.UseMiddleware<ExceptionHandlingMiddleware>();
+    // app.UseExceptionHandler("/error");
     app.UseHsts();
 }
 
