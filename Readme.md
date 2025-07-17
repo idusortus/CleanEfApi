@@ -151,3 +151,48 @@ dotnet ef database update
 dotnet ef migrations add InitialCreate --project src/Infra/ --startup-project src/Web.Api/
 
 dotnet ef database update --project src/Infra/ --startup-project src/Web.Api/
+
+
+### AddValidatorsFromAssemblyContaining<TValidator>()
+You've observed the dependencies correctly! Let's break down why you need both `using` statements and elaborate on `AddValidatorsFromAssemblyContaining<TValidator>()`.
+
+---
+
+### Why Both `using FluentValidation.AspNetCore;` and `using FluentValidation;`?
+
+This comes down to how .NET extension methods and namespaces are organized within the FluentValidation ecosystem.
+
+1.  **`using FluentValidation.AspNetCore;`**
+    *   **Provides:** The `AddFluentValidationAutoValidation()` extension method (and `AddFluentValidationClientsideAdapters()`, etc.).
+    *   **Purpose:** This namespace contains the code specifically designed to integrate FluentValidation with ASP.NET Core's MVC and API pipeline. `AddFluentValidationAutoValidation()` lives here because it hooks into the `IServiceCollection` to modify how MVC handles model validation.
+
+2.  **`using FluentValidation;`**
+    *   **Provides:** The `AddValidatorsFromAssemblyContaining<TValidator>()` extension method.
+    *   **Purpose:** While it might seem counter-intuitive that a method for ASP.NET Core integration (`AddValidatorsFromAssemblyContaining`) isn't in `FluentValidation.AspNetCore`, this specific extension method actually lives in the **`FluentValidation.DependencyInjectionExtensions`** package.
+        *   **Crucial Point:** `FluentValidation.AspNetCore` has a **dependency** on `FluentValidation.DependencyInjectionExtensions`. When you install `FluentValidation.AspNetCore`, it automatically brings `FluentValidation.DependencyInjectionExtensions` along.
+        *   The extension methods in `FluentValidation.DependencyInjectionExtensions` (including `AddValidatorsFromAssemblyContaining`) are exposed via the `FluentValidation` namespace (the core library's namespace).
+
+**In short:**
+
+*   You need `using FluentValidation.AspNetCore;` for the ASP.NET Core-specific auto-validation setup (`AddFluentValidationAutoValidation`).
+*   You need `using FluentValidation;` (which is the namespace where `AddValidatorsFromAssemblyContaining` is exposed, thanks to the transitive dependency on `FluentValidation.DependencyInjectionExtensions`) for the assembly scanning feature.
+
+It's a common pattern in .NET libraries where core extension methods for DI might reside in a "base" namespace even if they're conceptually part of a framework-specific integration package.
+
+---
+
+### Elaborating on `AddValidatorsFromAssemblyContaining<TValidator>()`
+
+Let's assume your validator (`QuoteCreateRequestValidator`) is located in `src/Application/Validators/`.
+
+The `AddValidatorsFromAssemblyContaining<TValidator>()` method is designed for **assembly scanning**.
+
+*   **What `TValidator` (e.g., `QuoteCreateRequestValidator`) signifies:** You provide it with *any type* (`TValidator`) that exists within the **assembly** where your FluentValidation validators are defined. It doesn't matter what type `TValidator` is, as long as it's from the correct assembly. Using one of your validator types is merely a convenient way to point to that specific assembly.
+
+*   **What it scans:** It will scan the **entire assembly** (in your case, the assembly compiled from your `src/Application/` project) for any public, non-abstract classes that inherit from `AbstractValidator<T>`.
+
+*   **What it registers:** For every `AbstractValidator<T>` it finds in that assembly, it automatically registers it in your DI container as `IValidator<T>`.
+
+It picks up any `AbstractValidator<T>` defined in your `src/Application/` class library project (or whatever project contains `QuoteCreateRequestValidator`), regardless of what sub-folder they are in.
+
+This assembly scanning is very powerful as it means you don't have to manually register each validator. You just add new validator files to your `Application` project, and they'll automatically be picked up by the DI container when the application starts.
