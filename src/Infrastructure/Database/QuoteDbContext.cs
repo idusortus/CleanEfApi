@@ -1,10 +1,12 @@
 using System.Dynamic;
 using CleanEfApi.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 
 namespace CleanEfApi.Infrastructure.Database;
 
-public class QuoteDbContext : DbContext
+public class QuoteDbContext : IdentityDbContext<IdentityUser, IdentityRole, string>
 {
     public QuoteDbContext(DbContextOptions<QuoteDbContext> options)
     : base(options)
@@ -15,6 +17,7 @@ public class QuoteDbContext : DbContext
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        base.OnModelCreating(modelBuilder);
         modelBuilder.Entity<Quote>().HasKey(k => k.QuoteId);
     }
 }

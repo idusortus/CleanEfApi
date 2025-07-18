@@ -2,6 +2,7 @@ using CleanEfApi.Application.DTOs;
 using CleanEfApi.Application.Responses;
 using CleanEfApi.Domain.Entities;
 using CleanEfApi.Infrastructure.Database;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -61,6 +62,7 @@ public class QuotesController(
     }
 
     [HttpPost()]
+    [Authorize]
     public async Task<ActionResult<QuoteResponse>> PostQuote([FromBody] QuoteCreateRequest req)
     {
         // translate req to Quote
