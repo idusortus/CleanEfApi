@@ -37,13 +37,8 @@ public class AuthController : ControllerBase
     [HttpPost("register")]
     public async Task<IActionResult> Register([FromBody] RegisterRequest model)
     {
-        if (!ModelState.IsValid)
-        {
-            return BadRequest(ModelState); // Let FluentValidation and ValidationActionFilter handle this
-        }
-
         var user = new IdentityUser { UserName = model.Email, Email = model.Email };
-        var result = await _userManager.CreateAsync(user, model.Password);
+        var result = await _userManager.CreateAsync(user, model.Password!);
 
         if (result.Succeeded)
         {
@@ -57,19 +52,14 @@ public class AuthController : ControllerBase
     [HttpPost("login")]
     public async Task<IActionResult> Login([FromBody] LoginRequest model)
     {
-        if (!ModelState.IsValid)
-        {
-            return BadRequest(ModelState); // Let FluentValidation and ValidationActionFilter handle this
-        }
-
-        var user = await _userManager.FindByEmailAsync(model.Email);
+        var user = await _userManager.FindByEmailAsync(model.Email!);
         if (user == null)
         {
             _logger.LogWarning("Login failed: User not found for {Email}.", model.Email);
             return Unauthorized(new AuthResponse { Success = false, Message = "Invalid credentials." });
         }
 
-        var result = await _signInManager.CheckPasswordSignInAsync(user, model.Password, lockoutOnFailure: false);
+        var result = await _signInManager.CheckPasswordSignInAsync(user, model.Password!, lockoutOnFailure: false);
         if (result.Succeeded)
         {
             _logger.LogInformation("User {Email} logged in successfully.", model.Email);
@@ -112,7 +102,7 @@ public class AuthController : ControllerBase
     /// <param name="remoteError">Any error reported by the external provider.</param>
     /// <returns>A redirect to the client UI with the JWT in the URL fragment.</returns>
     [HttpGet("external-login-callback")]
-    public async Task<IActionResult> ExternalLoginCallback(string returnUrl = "/", string remoteError = null)
+    public async Task<IActionResult> ExternalLoginCallback(string returnUrl = "/", string? remoteError = null)
     {
         if (remoteError != null)
         {
@@ -134,7 +124,7 @@ public class AuthController : ControllerBase
         {
             _logger.LogInformation("User logged in with {LoginProvider} account (existing user).", info.LoginProvider);
             var user = await _userManager.FindByLoginAsync(info.LoginProvider, info.ProviderKey);
-            var token = await GenerateJwtToken(user);
+            var token = await GenerateJwtToken(user!);
             // Redirect back to Scalar UI with token in fragment
             return Redirect($"{returnUrl}#access_token={token}&token_type=Bearer&expires_in={_configuration["Jwt:ExpireDays"]}");
         }
@@ -143,12 +133,28 @@ public class AuthController : ControllerBase
             _logger.LogWarning("User locked out for {LoginProvider} account.", info.LoginProvider);
             return Redirect($"{returnUrl}?error={Uri.EscapeDataString("User account locked out.")}");
         }
-        else // If the user does not have an account, then create one
+        if (result.IsNotAllowed) // NEW: Handle NotAllowed status
         {
+            _logger.LogWarning("Auth: User not allowed to login for {LoginProvider} account (e.g., email not confirmed).", info.LoginProvider);
+            // Redirect to a page that explains account not confirmed or similar
+            return Redirect($"{returnUrl}?error={Uri.EscapeDataString("Account not allowed to login. Please confirm your email or contact support.")}");
+        }
+        if (result.RequiresTwoFactor) // NEW: Handle 2FA required
+        {
+            _logger.LogInformation("Auth: User requires 2FA for {LoginProvider} account.", info.LoginProvider);
+            // This is a complex flow. You'd typically redirect to a specific 2FA verification page.
+            // For API, you might return a specific status or error indicating 2FA is needed.
+            // Simplified redirect for demo:
+            return Redirect($"{returnUrl}?error={Uri.EscapeDataString("Two-Factor Authentication is required. Please complete 2FA.")}");
+        }
+        // If none of the above, it means IsNotFound (or IsPartial, which is less common here)
+        else
+        {
+            _logger.LogInformation("Auth: User not found with {LoginProvider}, attempting to create new account.", info.LoginProvider);
             var email = info.Principal.FindFirstValue(ClaimTypes.Email);
             if (string.IsNullOrEmpty(email))
             {
-                _logger.LogWarning("External login callback failed: no email claim found from {LoginProvider}.", info.LoginProvider);
+                _logger.LogWarning("Auth: External login callback failed: no email claim found from {LoginProvider}.", info.LoginProvider);
                 return Redirect($"{returnUrl}?error={Uri.EscapeDataString("Error: Could not retrieve email from external provider.")}");
             }
 
@@ -156,16 +162,16 @@ public class AuthController : ControllerBase
             var createResult = await _userManager.CreateAsync(newUser);
             if (createResult.Succeeded)
             {
-                createResult = await _userManager.AddLoginAsync(newUser, info); // Link external login to new user
+                createResult = await _userManager.AddLoginAsync(newUser, info);
                 if (createResult.Succeeded)
                 {
-                    await _signInManager.SignInAsync(newUser, isPersistent: false); // Sign in the new user
-                    _logger.LogInformation("New user account created and logged in with {LoginProvider} for {Email}.", info.LoginProvider, email);
+                    await _signInManager.SignInAsync(newUser, isPersistent: false);
+                    _logger.LogInformation("Auth: New user account created and logged in with {LoginProvider} for {Email}.", info.LoginProvider, email);
                     var token = await GenerateJwtToken(newUser);
                     return Redirect($"{returnUrl}#access_token={token}&token_type=Bearer&expires_in={_configuration["Jwt:ExpireDays"]}");
                 }
             }
-            _logger.LogWarning("Error creating user account for {Email}: {Errors}", email, string.Join(", ", createResult.Errors.Select(e => e.Description)));
+            _logger.LogWarning("Auth: Error creating user account for {Email}: {Errors}", email, string.Join(", ", createResult.Errors.Select(e => e.Description)));
             return Redirect($"{returnUrl}?error={Uri.EscapeDataString("Error creating user account for external login.")}");
         }
     }
@@ -192,7 +198,7 @@ public class AuthController : ControllerBase
             user = await _signInManager.GetExternalAuthenticationSchemesAsync()
                           .ContinueWith(t => t.Result.FirstOrDefault(s => s.DisplayName == "Google")) // Example to get Google scheme
                           .ContinueWith(t => _signInManager.GetExternalLoginInfoAsync().Result) // Get login info from external cookie
-                          .ContinueWith(t => _userManager.FindByLoginAsync(t.Result.LoginProvider, t.Result.ProviderKey).Result); // Find user by external login
+                          .ContinueWith(t => _userManager.FindByLoginAsync(t.Result!.LoginProvider, t.Result.ProviderKey).Result); // Find user by external login
 
             if (user == null && User.Identity?.IsAuthenticated == true)
             {
