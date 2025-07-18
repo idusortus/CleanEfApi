@@ -1,4 +1,4 @@
-# Milan's somewhat simplified structure
+# .Net API Review Notes
 
 Web.Api -> Infrastructure -> App -> Domain
 ```bash

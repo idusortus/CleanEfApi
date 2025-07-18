@@ -23,14 +23,13 @@ public class QuotesController(
     public async Task<ActionResult<ApiResponse<QuoteResponse>>> GetQuote(int id)
     {
         // 1. Explicit Input Validation for Path Parameters (not handled by ValidationActionFilter)
-        if (id <= 0)
+        if (id <= 0) // Return 400 Bad Request with a structured error response
         {
             _logger.LogWarning("GetQuote: Invalid quote ID received: {QuoteId}", id);
-            // Return 400 Bad Request with a structured error response
+            
             return BadRequest(ApiResponse.Error("Quote ID must be a positive integer.",
                 new List<ApiError> { new ApiError { Field = "id", Message = "ID must be greater than 0.", Code = "INVALID_ID_FORMAT" } }));
         }
-
         _logger.LogInformation("GetQuote: Attempting to retrieve quote with ID: {QuoteId}", id);
 
         // No try-catch here; letting the global ExceptionHandlingMiddleware catch unhandled exceptions (e.g., DB connection issues).
@@ -38,11 +37,9 @@ public class QuotesController(
                                   .AsNoTracking() // Optimize for read-only query
                                   .FirstOrDefaultAsync(q => q.QuoteId == id); // Using QuoteId property
 
-        // 3. Resource Not Found Handling
-        if (quote == null)
+        if (quote == null) // 3. Resource Not Found Handling 404
         {
             _logger.LogInformation("GetQuote: Quote with ID: {QuoteId} not found.", id);
-            // Return 404 Not Found with a structured error response
             return NotFound(ApiResponse.Error($"Quote with ID '{id}' not found.",
                 new List<ApiError> { new ApiError { Code = "QUOTE_NOT_FOUND", Message = $"Quote with ID '{id}' does not exist." } }));
         }
@@ -61,10 +58,13 @@ public class QuotesController(
         return Ok(ApiResponse.Ok(quoteResponse, "Quote retrieved successfully."));
     }
 
-    [HttpPost()]
+    [HttpPost]
     [Authorize]
+    [ProducesResponseType(StatusCodes.Status201Created, Type = typeof(ApiResponse<QuoteResponse>))]
+    [ProducesResponseType(StatusCodes.Status400BadRequest, Type=typeof(ApiResponse))]
     public async Task<ActionResult<QuoteResponse>> PostQuote([FromBody] QuoteCreateRequest req)
     {
+        _logger.LogInformation("Controller: PostQuote request recieved for author: {Author}", req.Author);
         // translate req to Quote
         var quote = new Quote
         {
@@ -77,6 +77,8 @@ public class QuotesController(
 
         _context.Quotes.Add(quote);
         await _context.SaveChangesAsync();
+
+        
 
         // translate Quote to QuoteResponse
         var qr = new QuoteResponse
