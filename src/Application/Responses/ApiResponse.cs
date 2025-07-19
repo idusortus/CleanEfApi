@@ -14,7 +14,7 @@ public class ApiResponse
 {
     public bool Success { get; set; }
     public string Message { get; set; } = "Request processed."; // General status message
-    public List<ApiError>? Errors { get; set; } // Only present when Success is false
+    public List<ApiError> Errors { get; set; } = []; // Only present when Success is false
 
     // Private constructor to enforce usage of static factory methods
     // This prevents direct instantiation like 'new ApiResponse()'
@@ -24,14 +24,14 @@ public class ApiResponse
     // Renamed to 'Ok' for clarity, indicating a successful but potentially no-data response
     public static ApiResponse Ok(string message = "Request successful.")
     {
-        return new ApiResponse { Success = true, Message = message, Errors = null };
+        return new ApiResponse { Success = true, Message = message, Errors = [] };
     }
 
     // Factory method for generic success (returns an ApiResponse<T>).
     // This uses a generic type parameter on the *method* to create the generic instance.
     public static ApiResponse<T> Ok<T>(T data, string message = "Request successful.")
     {
-        return new ApiResponse<T> { Success = true, Message = message, Data = data, Errors = null };
+        return new ApiResponse<T> { Success = true, Message = message, Data = data, Errors = [] };
     }
 
     // Factory method for errors (can be used for both generic and non-generic contexts)

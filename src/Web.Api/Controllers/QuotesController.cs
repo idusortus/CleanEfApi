@@ -1,7 +1,7 @@
 using CleanEfApi.Application.DTOs;
 using CleanEfApi.Application.Responses;
+using CleanEfApi.Application.Services;
 using CleanEfApi.Domain.Entities;
-using CleanEfApi.Infrastructure.Database;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
@@ -12,7 +12,7 @@ namespace CleanEfApi.Web.Api.Controllers;
 [ApiController]
 [Route("/api/quotes")]
 public class QuotesController(
-    QuoteDbContext _context,
+    IQuoteService _quoteService,
     ILogger<QuotesController> _logger)
     : ControllerBase
 {
@@ -20,7 +20,7 @@ public class QuotesController(
     [ProducesResponseType(StatusCodes.Status200OK, Type = typeof(ApiResponse<QuoteResponse>))] 
     [ProducesResponseType(StatusCodes.Status400BadRequest, Type = typeof(ApiResponse))]
     [ProducesResponseType(StatusCodes.Status404NotFound, Type = typeof(ApiResponse))] 
-    public async Task<ActionResult<ApiResponse<QuoteResponse>>> GetQuote(int id)
+    public async Task<ActionResult<ApiResponse<QuoteResponse>>> GetQuoteById(int id)
     {
         // 1. Explicit Input Validation for Path Parameters (not handled by ValidationActionFilter)
         if (id <= 0) // Return 400 Bad Request with a structured error response
@@ -33,9 +33,7 @@ public class QuotesController(
         _logger.LogInformation("GetQuote: Attempting to retrieve quote with ID: {QuoteId}", id);
 
         // No try-catch here; letting the global ExceptionHandlingMiddleware catch unhandled exceptions (e.g., DB connection issues).
-        var quote = await _context.Quotes
-                                  .AsNoTracking() // Optimize for read-only query
-                                  .FirstOrDefaultAsync(q => q.QuoteId == id); // Using QuoteId property
+        var quote = await _quoteService.GetQuoteByIdAsync(id);
 
         if (quote == null) // 3. Resource Not Found Handling 404
         {
@@ -58,38 +56,38 @@ public class QuotesController(
         return Ok(ApiResponse.Ok(quoteResponse, "Quote retrieved successfully."));
     }
 
-    [HttpPost]
-    [Authorize]
-    [ProducesResponseType(StatusCodes.Status201Created, Type = typeof(ApiResponse<QuoteResponse>))]
-    [ProducesResponseType(StatusCodes.Status400BadRequest, Type=typeof(ApiResponse))]
-    public async Task<ActionResult<QuoteResponse>> PostQuote([FromBody] QuoteCreateRequest req)
-    {
-        _logger.LogInformation("Controller: PostQuote request recieved for author: {Author}", req.Author);
-        // translate req to Quote
-        var quote = new Quote
-        {
-            Author = req.Author,
-            Content = req.Content,
-            Category = req.Category,
-            Created = DateTimeOffset.UtcNow,
-            LastModified = DateTimeOffset.UtcNow
-        };
+    // [HttpPost]
+    // [Authorize]
+    // [ProducesResponseType(StatusCodes.Status201Created, Type = typeof(ApiResponse<QuoteResponse>))]
+    // [ProducesResponseType(StatusCodes.Status400BadRequest, Type=typeof(ApiResponse))]
+    // public async Task<ActionResult<QuoteResponse>> PostQuote([FromBody] QuoteCreateRequest req)
+    // {
+    //     _logger.LogInformation("Controller: PostQuote request recieved for author: {Author}", req.Author);
+    //     // translate req to Quote
+    //     var quote = new Quote
+    //     {
+    //         Author = req.Author,
+    //         Content = req.Content,
+    //         Category = req.Category,
+    //         Created = DateTimeOffset.UtcNow,
+    //         LastModified = DateTimeOffset.UtcNow
+    //     };
 
-        _context.Quotes.Add(quote);
-        await _context.SaveChangesAsync();
+    //     _context.Quotes.Add(quote);
+    //     await _context.SaveChangesAsync();
 
         
 
-        // translate Quote to QuoteResponse
-        var qr = new QuoteResponse
-        {
-            QuoteId = quote.QuoteId,
-            Author = quote.Author,
-            Content = quote.Content,
-            Likes = quote.Likes
-        };
+    //     // translate Quote to QuoteResponse
+    //     var qr = new QuoteResponse
+    //     {
+    //         QuoteId = quote.QuoteId,
+    //         Author = quote.Author,
+    //         Content = quote.Content,
+    //         Likes = quote.Likes
+    //     };
 
-        // Return a link to the newly created quote
-        return CreatedAtAction(nameof(GetQuote), new { id = qr.QuoteId }, qr);
-    }
+    //     // Return a link to the newly created quote
+    //     return CreatedAtAction(nameof(GetQuote), new { id = qr.QuoteId }, qr);
+    // }
 }

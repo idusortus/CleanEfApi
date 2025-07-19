@@ -4,7 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 
-namespace CleanEfApi.Infrastructure.Database;
+namespace CleanEfApi.Infrastructure.Persistence;
 
 public class QuoteDbContext : IdentityDbContext<IdentityUser, IdentityRole, string>
 {

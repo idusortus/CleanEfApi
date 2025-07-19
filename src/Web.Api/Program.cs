@@ -1,6 +1,6 @@
 using CleanEfApi.Application.DTOs;
 using CleanEfApi.Application.Validators;
-using CleanEfApi.Infrastructure.Database;
+using CleanEfApi.Infrastructure.Persistence;
 using FluentValidation.AspNetCore;
 using FluentValidation;
 using Microsoft.AspNetCore.Diagnostics;
@@ -15,7 +15,11 @@ using System.Text;
 using Microsoft.OpenApi.Models;
 using System.Security.Claims;
 
+using Microsoft.AspNetCore.OpenApi;
 using Microsoft.AspNetCore.Authentication.Google;
+using CleanEfApi.Application.Interfaces;
+using CleanEfApi.Infrastructure.Persistence.Repositories;
+using CleanEfApi.Application.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 // Add services to the container. 
@@ -38,6 +42,9 @@ builder.Services.AddDbContext<QuoteDbContext>(options =>
             maxRetryDelay: TimeSpan.FromSeconds(30),
             errorNumbersToAdd: null); 
     }));
+
+builder.Services.AddScoped<IQuoteRepository, QuoteRepository>();
+builder.Services.AddScoped<IQuoteService, QuoteService>();
 // Enable automatic validation during model binding
 builder.Services.AddFluentValidationAutoValidation();
 // //fluent validation (single, scoped)
@@ -94,9 +101,9 @@ builder.Services.AddAuthentication(options =>
 builder.Services.AddAuthorization();
 
 // --- SCALAR / OPENAPI CONFIGURATION FOR AUTHENTICATION ---
-builder.Services.AddOpenApi(options =>
-{
-});
+builder.Services.AddOpenApi("v1", options => { options.AddDocumentTransformer<BearerSecuritySchemeTransformer>(); });
+
+
 
 var app = builder.Build();
 // Configure the HTTP request pipeline.
@@ -123,3 +130,34 @@ app.UseHttpsRedirection();
 app.MapControllers();
 
 app.Run();
+
+internal sealed class BearerSecuritySchemeTransformer(Microsoft.AspNetCore.Authentication.IAuthenticationSchemeProvider authenticationSchemeProvider) : Microsoft.AspNetCore.OpenApi.IOpenApiDocumentTransformer
+{
+    public async Task TransformAsync(OpenApiDocument document, OpenApiDocumentTransformerContext context, CancellationToken cancellationToken)
+    {
+        var authenticationSchemes = await authenticationSchemeProvider.GetAllSchemesAsync();
+        if (authenticationSchemes.Any(authScheme => authScheme.Name == "Bearer"))
+        {
+            var requirements = new Dictionary<string, OpenApiSecurityScheme>
+            {
+                ["Bearer"] = new OpenApiSecurityScheme
+                {
+                    Type = SecuritySchemeType.Http,
+                    Scheme = "bearer", 
+                    In = ParameterLocation.Header,
+                    BearerFormat = "Json Web Token"
+                }
+            };
+            document.Components ??= new OpenApiComponents();
+            document.Components.SecuritySchemes = requirements;
+
+            foreach (var operation in document.Paths.Values.SelectMany(path => path.Operations))
+            {
+                operation.Value.Security.Add(new OpenApiSecurityRequirement
+                {
+                    [new OpenApiSecurityScheme { Reference = new OpenApiReference { Id = "Bearer", Type = ReferenceType.SecurityScheme } }] = Array.Empty<string>()
+                });
+            }
+        }
+    }
+}
